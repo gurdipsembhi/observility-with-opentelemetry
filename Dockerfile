@@ -9,7 +9,7 @@ ENV PYTHONUNBUFFERED=1
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY main.py telemetry.py .
+COPY main.py telemetry.py ./
 
 # "localhost" inside a container is the container itself. On the compose
 # network, the backend is reachable by its service name.
