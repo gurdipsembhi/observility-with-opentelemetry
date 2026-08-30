@@ -1,0 +1,64 @@
+# Backends for the telemetry this app emits. Everything here speaks OTLP, so the
+# app itself never changes — only where you point OTEL_EXPORTER_OTLP_ENDPOINT.
+#
+#   docker compose up -d                          # Grafana + Tempo + Prometheus + Loki
+#   docker compose --profile jaeger up -d jaeger  # Jaeger alone (traces only)
+#   docker compose --profile collector up -d      # Grafana, with a real Collector in front
+#
+# Start only one of the first two: both bind port 4317.
+
+services:
+  # Grafana's all-in-one teaching stack: an OTel Collector, Tempo (traces),
+  # Prometheus (metrics), Loki (logs) and Grafana, pre-wired together.
+  lgtm:
+    image: grafana/otel-lgtm:0.32.0
+    container_name: lgtm
+    ports:
+      - "3000:3000" # Grafana UI
+      - "4317:4317" # OTLP gRPC   <- the app sends here
+      - "4318:4318" # OTLP HTTP
+    environment:
+      ENABLE_LOGS_ALL: "true"
+
+  # Traces only, but the UI is simpler to read when you're starting out.
+  jaeger:
+    profiles: ["jaeger"]
+    image: jaegertracing/all-in-one:1.76.0
+    container_name: jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686" # Jaeger UI
+      - "4317:4317"
+      - "4318:4318"
+
+  # A standalone Collector, so you can see what one actually does: receive,
+  # process (filter/enrich/batch), export. Listens on 4319 to stay out of the
+  # way of lgtm's own 4317, and forwards to lgtm over the compose network.
+  otelcol:
+    profiles: ["collector"]
+    image: otel/opentelemetry-collector-contrib:0.159.0
+    container_name: otelcol
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4319:4317" # app sends here when you use this profile
+    depends_on:
+      - lgtm
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    depends_on:
+      - lgtm
+  service2:
+    # Built from the repo root so the image can include the shared telemetry.py.
+    build:
+      context: .
+      dockerfile: service2/Dockerfile
+    ports:
+      - "8001:8000"
+    depends_on:
+      - lgtm

@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+httpx
+
+opentelemetry-sdk
+opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-instrumentation-fastapi
+opentelemetry-instrumentation-httpx

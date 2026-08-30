@@ -1,0 +1,58 @@
+# A minimal but real Collector pipeline: receive -> process -> export.
+# This is the piece you put between your apps and your backend in production:
+# apps speak OTLP to one local endpoint, and the Collector decides what
+# happens next — filtering, enriching, batching, fan-out, sampling.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # Always batch before exporting: fewer, bigger network calls.
+  batch:
+    timeout: 5s
+
+  # Stamp every signal with where it was collected.
+  resource:
+    attributes:
+      - key: collected.by
+        value: otel-collector
+        action: upsert
+
+  # Health checks are pure noise and you pay to store them. Drop them here,
+  # not in the app — that's the point of a collector.
+  filter/drop_health:
+    error_mode: ignore
+    traces:
+      span:
+        - 'attributes["http.route"] == "/health"'
+
+exporters:
+  # Prints a summary of everything passing through, to this container's logs:
+  #   docker compose logs -f otelcol
+  debug:
+    verbosity: basic
+
+  otlp/lgtm:
+    endpoint: lgtm:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [filter/drop_health, resource, batch]
+      exporters: [debug, otlp/lgtm]
+    metrics:
+      receivers: [otlp]
+      processors: [resource, batch]
+      exporters: [otlp/lgtm]
+    logs:
+      receivers: [otlp]
+      processors: [resource, batch]
+      exporters: [otlp/lgtm]
